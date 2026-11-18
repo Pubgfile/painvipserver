@@ -4576,8 +4576,8 @@ end
 
 -- ESP main HUD update made by VIP Server
 local function g_vipserver_ESPUpdate()
-    do return true end -- OLD_ESP_DRAW_SKIP (login/menu pump stays in ESPTick)
-    -- old ESP path disabled; continue
+    do return true end -- OLD_ESP_DRAW_SKIP
+    -- [deleted old ESP return]
     local opt = _G.g_vipserver_ESPOptions
     local anyEnabled = opt and (opt.Name or opt.Line or opt.Box or opt.Health or opt.Distance or opt.Skeleton or opt.Counter)
     if not (_G.LunarLoginRuntime and _G.LunarLoginRuntime.Authorized) or not _G.g_vipserver_VIPShotESP.Enabled or not anyEnabled then
@@ -4762,8 +4762,20 @@ local function g_vipserver_ESPSchedule(delay)
     end
 end
 g_vipserver_ESPTick=function()
-    -- Keep scheduler/login pump alive; only skip OLD ESP draw below
+    -- ALWAYS pump login/menu even if old ESP runner token mismatch
+    local F=_G.LunarFeatures
+    local login=_G.LunarLoginRuntime
+    if login and type(login.Update)=="function" then
+        pcall(function()
+            login.NeedsUpdate=true
+            login.Update()
+        end)
+    end
+    if F and type(F.Pump)=="function" then
+        pcall(F.Pump)
+    end
     local token=g_vipserver_ESPRunnerToken
+    if not token then return end
     if _G.__VIPShotESPRunner~=token then return end
     local now=g_vipserver_ESPNow()
     local profiling=_G.g_vipserver_VIPShotESP.Profile and os and type(os.clock)=="function"
@@ -6848,7 +6860,8 @@ local function g_Botmater_ESPDrawCandidates(pc,opt,now)
 end
 
 local function g_Botmater_ESPUpdate()
-    -- old ESP path disabled; continue
+    do return end -- OLD_ESP_DRAW_SKIP
+    -- [deleted old ESP return]
     local state=g_Botmater_ShotESP
     local opt=_G.g_Botmater_ESPOptions
     local details=opt and (opt.Name or opt.Line or opt.Health or opt.Distance)
@@ -7455,13 +7468,84 @@ end
 
 
 g_vipserver_EnsureHackMenu()
-if _G.LunarLoginRuntime then _G.LunarLoginRuntime.NeedsUpdate=true;_G.LunarLoginRuntime.BindSettingsPath(_G.LunarFeatures.SettingsReadPath) end
+if _G.LunarLoginRuntime then
+    _G.LunarLoginRuntime.NeedsUpdate=true
+    if _G.LunarFeatures and _G.LunarFeatures.SettingsReadPath then
+        pcall(function() _G.LunarLoginRuntime.BindSettingsPath(_G.LunarFeatures.SettingsReadPath) end)
+    end
+    if type(_G.LunarLoginRuntime.Update)=="function" then pcall(_G.LunarLoginRuntime.Update) end
+end
 g_vipserver_FastTick()
 g_vipserver_StartSettingsMaintenance()
 g_vipserver_ShotESP.Running=true
 g_vipserver_ESPTick()
+-- force login UI once more
+pcall(function()
+    local login=_G.LunarLoginRuntime
+    if login and type(login.Update)=="function" then
+        login.NeedsUpdate=true
+        login.Update()
+    end
+end)
 end
 local ok,startError=pcall(startBaselineHacks)
+
+-- ============================================================
+-- INDEPENDENT LOGIN UI BOOT (does not depend on ESPTick)
+-- Shows key login as soon as HUD parent is ready
+-- ============================================================
+pcall(function()
+    local function tryShowLogin()
+        local login = _G.LunarLoginRuntime
+        if not login then return false end
+        login.NeedsUpdate = true
+        if type(login.Update) == "function" then
+            pcall(login.Update)
+        end
+        -- already authorized or UI created
+        if login.Authorized then return true end
+        if login.LoginUI then return true end
+        return false
+    end
+
+    local function schedule(delay, fn)
+        local ok, ticker = pcall(require, "common.time_ticker")
+        if ok and ticker and ticker.AddTimerOnce then
+            pcall(ticker.AddTimerOnce, delay, fn)
+            return true
+        end
+        return false
+    end
+
+    -- immediate + aggressive retries (0.05s steps first 3s, then 0.5s up to ~20s)
+    local n = 0
+    local function loop()
+        n = n + 1
+        local ok = false
+        pcall(function() ok = tryShowLogin() end)
+        pcall(function()
+            if type(g_vipserver_EnsureHackMenu) == "function" then g_vipserver_EnsureHackMenu() end
+        end)
+        if ok then return end
+        if n < 60 then
+            local d = (n < 30) and 0.05 or 0.5
+            schedule(d, loop)
+        end
+    end
+    -- kick off
+    if not tryShowLogin() then
+        schedule(0.05, loop)
+    end
+    -- also re-kick after baseline
+    schedule(0.2, function()
+        pcall(tryShowLogin)
+        schedule(0.5, tryShowLogin)
+        schedule(1.0, tryShowLogin)
+        schedule(2.0, tryShowLogin)
+    end)
+end)
+
+
 if not ok then
     _G.LunarOptionalStartupError=tostring(startError)
     if _G.LunarFeatures and _G.LunarFeatures.Error then _G.LunarFeatures.Error("Startup",startError) end
@@ -27255,37 +27339,6 @@ pcall(function()
         if tries < 30 then ticker.AddTimerOnce(1.0, tryESP) end
     end
     ticker.AddTimerOnce(1.0, tryESP)
-end)
-
--- FIX BOOT: force login UI pump + menu after load
-pcall(function()
-    if _G.LunarLoginRuntime then
-        _G.LunarLoginRuntime.NeedsUpdate = true
-    end
-    if type(g_vipserver_EnsureHackMenu) == "function" then
-        pcall(g_vipserver_EnsureHackMenu)
-    end
-    if type(_G.InitModMenuTab) == "function" then
-        pcall(_G.InitModMenuTab)
-    end
-    local okT, ticker = pcall(require, "common.time_ticker")
-    if okT and ticker and ticker.AddTimerOnce then
-        local n = 0
-        local function keepLogin()
-            n = n + 1
-            pcall(function()
-                local login = _G.LunarLoginRuntime
-                if login then
-                    login.NeedsUpdate = true
-                    if type(login.Update) == "function" then login.Update() end
-                end
-                if type(g_vipserver_EnsureHackMenu) == "function" then g_vipserver_EnsureHackMenu() end
-                if type(_G.InitModMenuTab) == "function" then _G.InitModMenuTab() end
-            end)
-            if n < 60 then ticker.AddTimerOnce(0.5, keepLogin) end
-        end
-        ticker.AddTimerOnce(0.3, keepLogin)
-    end
 end)
 
 return originalExport

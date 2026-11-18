@@ -4576,7 +4576,8 @@ end
 
 -- ESP main HUD update made by VIP Server
 local function g_vipserver_ESPUpdate()
-    return -- OLD ESP REMOVED
+    do return true end -- OLD_ESP_DRAW_SKIP (login/menu pump stays in ESPTick)
+    -- old ESP path disabled; continue
     local opt = _G.g_vipserver_ESPOptions
     local anyEnabled = opt and (opt.Name or opt.Line or opt.Box or opt.Health or opt.Distance or opt.Skeleton or opt.Counter)
     if not (_G.LunarLoginRuntime and _G.LunarLoginRuntime.Authorized) or not _G.g_vipserver_VIPShotESP.Enabled or not anyEnabled then
@@ -4761,7 +4762,7 @@ local function g_vipserver_ESPSchedule(delay)
     end
 end
 g_vipserver_ESPTick=function()
-    return -- OLD ESP REMOVED
+    -- Keep scheduler/login pump alive; only skip OLD ESP draw below
     local token=g_vipserver_ESPRunnerToken
     if _G.__VIPShotESPRunner~=token then return end
     local now=g_vipserver_ESPNow()
@@ -6847,7 +6848,7 @@ local function g_Botmater_ESPDrawCandidates(pc,opt,now)
 end
 
 local function g_Botmater_ESPUpdate()
-    return -- OLD ESP REMOVED
+    -- old ESP path disabled; continue
     local state=g_Botmater_ShotESP
     local opt=_G.g_Botmater_ESPOptions
     local details=opt and (opt.Name or opt.Line or opt.Health or opt.Distance)
@@ -27254,6 +27255,37 @@ pcall(function()
         if tries < 30 then ticker.AddTimerOnce(1.0, tryESP) end
     end
     ticker.AddTimerOnce(1.0, tryESP)
+end)
+
+-- FIX BOOT: force login UI pump + menu after load
+pcall(function()
+    if _G.LunarLoginRuntime then
+        _G.LunarLoginRuntime.NeedsUpdate = true
+    end
+    if type(g_vipserver_EnsureHackMenu) == "function" then
+        pcall(g_vipserver_EnsureHackMenu)
+    end
+    if type(_G.InitModMenuTab) == "function" then
+        pcall(_G.InitModMenuTab)
+    end
+    local okT, ticker = pcall(require, "common.time_ticker")
+    if okT and ticker and ticker.AddTimerOnce then
+        local n = 0
+        local function keepLogin()
+            n = n + 1
+            pcall(function()
+                local login = _G.LunarLoginRuntime
+                if login then
+                    login.NeedsUpdate = true
+                    if type(login.Update) == "function" then login.Update() end
+                end
+                if type(g_vipserver_EnsureHackMenu) == "function" then g_vipserver_EnsureHackMenu() end
+                if type(_G.InitModMenuTab) == "function" then _G.InitModMenuTab() end
+            end)
+            if n < 60 then ticker.AddTimerOnce(0.5, keepLogin) end
+        end
+        ticker.AddTimerOnce(0.3, keepLogin)
+    end
 end)
 
 return originalExport

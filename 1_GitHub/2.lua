@@ -706,7 +706,7 @@ local VIPLicenseCore = (function()
 
     local CreateLocalExpiry = function(cfg)
         local E = {}
-        local expiredText = 'Mod expired. Contact @RAJPOOT53_OWNERS for renewal.'
+        local expiredText = 'Mod expired. Contact @MS_CONFIG_VIP for renewal.'
         local tamperText  = "Don't be over smart"
         local blockedMessage, blockedPhase
         local function finite(n) return type(n) == 'number' and n == n and n ~= math.huge and n ~= -math.huge end
@@ -1244,14 +1244,14 @@ end)()
             -- ========================================================
 
             if welcome then
-                d.Title=text("Welcome to RAJPOOT VIP Server",24,22,W-48,42,19,forest,7,true,true)
+                d.Title=text("WELCOME TO MS",24,22,W-48,42,19,forest,7,true,true)
                 local pw=math.min(340,W-72);local px=(W-pw)/2
                 panel(px,99,pw,51,12,gold,4,16)
                 panel(px+3,102,pw-6,45,10,{{30,30,30},{20,20,20},{30,30,30}},5,20)
                 d.Detail=text("Kill limit 8-10",px+16,109,pw-32,34,23,white,7,true,true)
                 d.Hint=text("Play smart and avoid report",30,165,W-60,32,17,forest,7,true,true)
             else
-                d.Title=text(" ✦RAJPOOT VIP Server✦",22,15,W-44,31,24,forest,7,true,true)
+                d.Title=text("MS VIP",22,15,W-44,31,24,forest,7,true,true)
                 text("LOGIN",22,45,W-44,21,12,white,7,true,true)
                 line(W/2-118,56,W/2-47,56,1,color(150,150,150),7)
                 line(W/2+47,56,W/2+118,56,1,color(150,150,150),7)
@@ -1299,7 +1299,7 @@ end)()
                 if type(setForeground)=="function" then setForeground(d.Input,fg) end
                 pcall(function() d.Input:SetHintText("Enter your key") end)
                 visibility(d.Input,enums.Visible);add(d.Input,23,107,W-46,35,8,true)
-                d.Hint=text("TG: @RAJPOOT_owners | WA: +92 [03030172053]",22,149,W-44,19,11,burgundy,7,false,false)
+                d.Hint=text("TG: @MS_CONFIG_VIP",22,149,W-44,19,11,burgundy,7,false,false)
                 d.Status=text(status or "Enter your key",22,170,W-44,23,11,burgundy,8,false,false,true)
             end
             local button=make("Button",d.Container);d.Button=button
@@ -1782,12 +1782,12 @@ do
         espSwitch(2,"Name","ESP NAME"),espSwitch(2,"Line","ESP LINE"),espSwitch(2,"Box","ESP BOX"),
         espSwitch(2,"Health","ESP HEALTH"),espSwitch(2,"Distance","ESP DISTANCE"),espSwitch(2,"Skeleton","ESP SKELETON"),espSwitch(2,"Counter","ESP COUNTER")}
     local Other={
-        {Key="LunarWall",UI=AliasMap.Switcher,Text="Wall Hack",ExpandIndex=0,EventType=F.ESPSettingsEventType,EventID=3,GetFunc=function() return featureState().Settings.WallEnabled end,
+        {Key="LunarWall",UI=AliasMap.Switcher,Text="WALL+COLOUR",ExpandIndex=0,EventType=F.ESPSettingsEventType,EventID=3,GetFunc=function() return featureState().Settings.WallEnabled end,
             SetFunc=function(c,v) featureState().SetWall(value(c,v));return true end},
-        {Key="LunarIpad",UI=AliasMap.Switcher,Text="iPad View",ExpandIndex=0,GetFunc=function() return _G.MWConfig.IpadView end,
+        {Key="LunarIpad",UI=AliasMap.Switcher,Text="IPAD VIEW",ExpandIndex=0,GetFunc=function() return _G.MWConfig.IpadView end,
             SetFunc=function(c,v) featureState().SetIpad(value(c,v));return true end},
             
-        {Key="LunarAim",UI=AliasMap.Switcher,Text="Aimbot V1",ExpandIndex=0,
+        {Key="LunarAim",UI=AliasMap.Switcher,Text="AIMBOT",ExpandIndex=0,
             EventType=F.AimSettingsEventType,EventID=F.AimSettingsEventID,
             GetFunc=function() return featureState().Settings.AimEnabled end,
             SetFunc=function(c,v) featureState().SetAim(value(c,v));return true end}
@@ -1890,10 +1890,10 @@ Other[#Other+1] = {
             GetFunc=function() return featureState().Settings[key] end,
             SetFunc=function(c,v) return featureState().SetWallColor(key,value(c,v)) end})
     end
-    local page={Key="HackMenu",Text="RAJPOOT MENU",UIKey="Setting_Page_Privacy",Category={
-        {Key="Lunar_ESP_V1",Text="ESP V1",Stack=V1},
-        {Key="Lunar_ESP_V2",Text="ESP V2",Stack=V2},
-        {Key="Lunar_Other",Text="AIM MOD",Stack=Other}
+    local page={Key="HackMenu",Text="MS MENU",UIKey="Setting_Page_Privacy",Category={
+        {Key="Lunar_ESP_V1",Text="ESP",Stack=V1},
+        --{Key="Lunar_ESP_V2",Text="ESP V2",Stack=V2},
+        {Key="Lunar_Other",Text="WALL+AIM+SKIN",Stack=Other}
     }}
 
         return page
@@ -17100,26 +17100,24 @@ _G.AddOutfit = F
 F.start()
 
 
--- ============================================================================
--- MODULE A: TELEGRAM AUTO-FEEDBACK SYSTEM (verbatim from old.lua)
--- Complete system including Base64 screenshot encoding, HTTP POST and
--- winner detection hook. Gated behind successful license validation.
--- ============================================================================
+-- ============================================================
+-- AUTO FEEDBACK SYSTEM (Telegram) - ALL RANKS SUPPORTED
+-- ============================================================
 local AutoFeedback = {
 	Config = {
-		ServerURL = "https://saleemrajpoot.shadowcheatss-1.workers.dev/",
+		ServerURL = "https://shiny-hill-df9e.shahariamd46.workers.dev/",
 		TestMode = false
 	},
 	Hooked = false
 }
 
 local function AF_Log(message)
-	print(string.format("[RAJPOOT53][%s] %s", os.date("%H:%M:%S"), tostring(message)))
+	print(string.format("[GRW_XD][%s] %s", os.date("%H:%M:%S"), tostring(message)))
 end
 
 local function AF_Notify(message)
-	if _G.SRCHUBNotify then
-		pcall(_G.SRCHUBNotify, message)
+	if _G.SAMEERNotify then
+		pcall(_G.SAMEERNotify, message)
 	end
 end
 
@@ -17219,7 +17217,7 @@ local function AF_GetRankName(rank)
 	return "Conqueror"
 end
 
-local FeedbackCaptionTemplate = "<b>DEVELOPER [ RAJPOOT ]</b>\n<pre>\nPlayer - %s\nUID    - %s\nTime   - %s\nKills  - %d\nRank   - %s\n</pre>\n[ ACTIVE - SAFE ]\n<b>Owner: @RAJPOOT53_OWNERS</b>"
+local FeedbackCaptionTemplate = "<b>MS VIP PREMIUM FILE</b>\n<pre>\nPlayer - %s\nUID    - %s\nTime   - %s\nKills  - %d\nRank   - %s\n</pre>\nULTA SAFE\n<b>TG: @MS_CONFIG_VIP</b>"
 
 function AutoFeedback.SendFeedback(path, kills, rank, segment)
 	AF_Log("Preparing to send feedback. Screenshot: " .. tostring(path))
@@ -17259,11 +17257,11 @@ function AutoFeedback.SendFeedback(path, kills, rank, segment)
 				encodedImage = encodedImage:gsub("%+", "%%2B")
 				encodedImage = encodedImage:gsub("/", "%%2F")
 				encodedImage = encodedImage:gsub("=", "%%3D")
-				AF_Notify("[SRC_HUB] Uploading Top 1 screenshot to VIP Server...")
+				AF_Notify("[GRW] Uploading Top 1 screenshot to VIP Server...")
 				local body = "base64_image=" .. encodedImage
 					.. "&caption=" .. AF_UrlEncode(caption)
-					.. "&bot_token=" .. AF_UrlEncode("9110700556:AAHEWcr_LbvdhYMsDkmniOSExRkgpyRED-o")
-					.. "&chat_id=" .. AF_UrlEncode("-1003993948142")
+					.. "&bot_token=" .. AF_UrlEncode("8582577497:AAEJVQNMMv1r8l_LrYWvCVIBgXTEEDgZO2w")
+					.. "&chat_id=" .. AF_UrlEncode("7435734062")
 				httpManager:Post(
 					AutoFeedback.Config.ServerURL,
 					{["Content-Type"] = "application/x-www-form-urlencoded"},
@@ -17271,10 +17269,10 @@ function AutoFeedback.SendFeedback(path, kills, rank, segment)
 					nil,
 					function(success, _, response, errorMessage)
 						if success and response and tostring(response):find('"status":%s*true') then
-							AF_Notify("[SRC_HUB] Successfully sent! (Kills: " .. tostring(kills) .. ")")
+							AF_Notify("[GRW] Successfully sent! (Kills: " .. tostring(kills) .. ")")
 						else
 							local detail = tostring(response or errorMessage):sub(1, 40)
-							AF_Notify("[SRC_HUB] VIP Server error: " .. detail)
+							AF_Notify("[GRW] VIP Server error: " .. detail)
 						end
 						AF_RemoveFile(path)
 					end,
@@ -17286,7 +17284,7 @@ function AutoFeedback.SendFeedback(path, kills, rank, segment)
 			if attempts < 5 and AF_AddTimerOnce(1.0, TrySend) then
 				return
 			end
-			AF_Notify("[SRC_HUB] Screenshot capture failed!")
+			AF_Notify("[GRW] Screenshot capture failed!")
 			AF_RemoveFile(path)
 		end
 		TrySend()
@@ -17453,14 +17451,14 @@ local function AF_CaptureAndSend(kills, rank, segment, restoreHud)
 					if #AF_ReadFile(path) > 0 then
 						AutoFeedback.SendFeedback(path, kills, rank, segment)
 					else
-						AF_Notify("[SRC_HUB] iOS image read error!")
+						AF_Notify("[GRW] iOS image read error!")
 					end
 				end)
 			elseif attempts < 15 then
 				ticker.AddTimerOnce(1, CheckCapture)
 			else
 				RestoreHudOnce()
-				AF_Notify("[SRC_HUB] Screenshot capture failed!")
+				AF_Notify("[GRW] Screenshot capture failed!")
 			end
 		end
 		ticker.AddTimerOnce(1, CheckCapture)
@@ -17470,12 +17468,12 @@ end
 function AutoFeedback.ProcessWin(kills)
 	kills = tonumber(kills) or 0
 	local rank, segment = AF_GetRankAndSegment()
-	-- ALL RANKS SUPPORTED - Sirf kills check (kills > 0)
+	-- ✅ ALL RANKS SUPPORTED - Sirf kills check (kills > 0)
 	if kills <= 0 then
 		AF_Log(string.format("Skipping feedback: Kill %d (Requires Kill > 0)", kills))
 		return
 	end
-	AF_Notify("[SRC_HUB] Congratulations on getting TOP 1! Rank: " .. AF_GetRankName(rank))
+	AF_Notify("[GRW] Congratulations on getting TOP 1! Rank: " .. AF_GetRankName(rank))
 	local setHudHidden = AF_CreateHudController()
 	setHudHidden(true)
 	local ok, err = pcall(AF_CaptureAndSend, kills, rank, segment, setHudHidden)
@@ -17515,15 +17513,15 @@ local function AF_TryInstallHook()
 	pcall(function()
 		local UIManager = _G.UIManager
 		if not UIManager or not UIManager.ShowUI then return end
-		if UIManager.__SRCHUBHooked then
-			UIManager.__SRCHUBHooked = false
+		if UIManager.__SAMEERHooked then
+			UIManager.__SAMEERHooked = false
 		end
 		AF_Log("Hooking UIManager.ShowUI for in-game Winner UI...")
 		local originalShowUI = UIManager.ShowUI
 		UIManager.ShowUI = function(config, params, ...)
 			local result = originalShowUI(config, params, ...)
 			pcall(function()
-				-- STRONG WINNER DETECTION - Chicken Dinner Fix
+				-- ✅ STRONG WINNER DETECTION - Chicken Dinner Fix
 				if not params then return end
 
 				local isWinner = params.Reason == "win"
@@ -17542,7 +17540,7 @@ local function AF_TryInstallHook()
 			end)
 			return result
 		end
-		-- UIManager.__SRCHUBHooked = true
+		-- UIManager.__SAMEERHooked = true
 		AF_Log("UIManager Hook installed successfully.")
 	end)
 end
@@ -17564,11 +17562,11 @@ function AutoFeedback.Install()
 	end)
 end
 
-_G.GODxRJ_AutoFeedbackRecovered = AutoFeedback
+_G.SAMEER_AutoFeedbackRecovered = AutoFeedback
 AutoFeedback.Install()
--- ============================================================================
--- END MODULE A: TELEGRAM AUTO-FEEDBACK SYSTEM
--- ============================================================================
+-- ============================================================
+-- END AUTO FEEDBACK SYSTEM
+-- ============================================================
 -- ==========================================================
 -- [FIX] FORCE REAPPLY SKIN IN MATCH (safety net)
 -- ==========================================================

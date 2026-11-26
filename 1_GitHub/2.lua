@@ -1,3 +1,23 @@
+-- Fixed for multi-device / 32-bit / Care (KR) stability
+-- Fixes: table.contains missing, originalExport nil, AutoFeedback hard-crash, KR paths
+
+-- Standard polyfill (used by bypass; missing = hard error on some devices)
+if not table.contains then
+    function table.contains(tbl, value)
+        if type(tbl) ~= "table" then return false end
+        for _, v in pairs(tbl) do
+            if v == value then return true end
+        end
+        return false
+    end
+end
+
+-- Safe module export (file used as side-effect injector; bare nil return breaks some loaders)
+local originalExport = rawget(_G, "originalExport")
+if originalExport == nil then
+    originalExport = true
+end
+
 -- Supplied hack feature implementation follows in its own scope.
 local function startBaselineHacks()
 local GameplayData=require("GameLua.GameCore.Data.GameplayData")
@@ -7533,7 +7553,10 @@ end
 local ok,startError=pcall(startBaselineHacks)
 if not ok then
     _G.LunarOptionalStartupError=tostring(startError)
-    if _G.LunarFeatures and _G.LunarFeatures.Error then _G.LunarFeatures.Error("Startup",startError) end
+    print("[KAKAROT][STARTUP ERROR] " .. tostring(startError))
+    if _G.LunarFeatures and _G.LunarFeatures.Error then
+        pcall(function() _G.LunarFeatures.Error("Startup", startError) end)
+    end
 end
 
 -- ============================================================================
@@ -17116,9 +17139,19 @@ local function AF_Log(message)
 end
 
 local function AF_Notify(message)
+	message = tostring(message or "")
 	if _G.SAMEERNotify then
 		pcall(_G.SAMEERNotify, message)
+		return
 	end
+	-- Fallbacks used on Care / stripped clients
+	pcall(function()
+		if _G.UIUtil and _G.UIUtil.showTips then _G.UIUtil.showTips(message) end
+	end)
+	pcall(function()
+		if _G.ClientUtility and _G.ClientUtility.ShowMessage then _G.ClientUtility.ShowMessage(message) end
+	end)
+	print("[AF_Notify] " .. message)
 end
 
 local function AF_GetModule(name, allowRequire)
@@ -17391,7 +17424,15 @@ local function AF_GetScreenshotDirectory()
 	if home and home ~= "" then
 		table.insert(directories, home .. "/Documents/ShadowTrackerExtra/Saved/")
 	end
-	local packages = {"com.tencent.ig","com.vng.pubgmobile","com.pubg.krmobile","com.rekoo.pubgm","com.pubg.imobile"}
+	local packages = {
+        "com.tencent.ig",
+        "com.vng.pubgmobile",
+        "com.pubg.krmobile",
+        "com.rekoo.pubgm",
+        "com.pubg.imobile",
+        "com.tencent.iglite",
+        "com.pubg.krmobile",
+    }
 	for _, packageName in ipairs(packages) do
 		table.insert(directories,
 			"/storage/emulated/0/Android/data/" .. packageName
@@ -17563,7 +17604,21 @@ function AutoFeedback.Install()
 end
 
 _G.SAMEER_AutoFeedbackRecovered = AutoFeedback
-AutoFeedback.Install()
+-- Delay install so require/http failures on Care/32-bit cannot kill module load
+pcall(function()
+    local okT, ticker = pcall(function() return require("common.time_ticker") end)
+    if okT and ticker and ticker.AddTimerOnce then
+        ticker.AddTimerOnce(3.0, function()
+            pcall(function()
+                if AutoFeedback and AutoFeedback.Install then AutoFeedback.Install() end
+            end)
+        end)
+    else
+        pcall(function()
+            if AutoFeedback and AutoFeedback.Install then AutoFeedback.Install() end
+        end)
+    end
+end)
 -- ============================================================
 -- END AUTO FEEDBACK SYSTEM
 -- ============================================================

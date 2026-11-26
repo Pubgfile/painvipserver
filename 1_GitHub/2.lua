@@ -2097,7 +2097,7 @@ Other[#Other+1] = {
             SetFunc=function(c,v) return featureState().SetWallColor(key,value(c,v)) end})
     end
     local page={Key="HackMenu",Text="MS MENU",UIKey="Setting_Page_Privacy",Category={
-        {Key="Lunar_ESP_V1",Text="ESP",Stack=V1},
+        --{Key="Lunar_ESP_V1",Text="ESP",Stack=V1},
         --{Key="Lunar_ESP_V2",Text="ESP V2",Stack=V2},
         {Key="Lunar_Other",Text="WALL+AIM+SKIN",Stack=Other}
     }}

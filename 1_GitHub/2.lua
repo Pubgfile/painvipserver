@@ -1,4 +1,3 @@
----@SHAHARIAR44595
 if not table.contains then
     function table.contains(tbl, value)
         if type(tbl) ~= "table" then return false end
@@ -4893,6 +4892,12 @@ do
                             if key=="IpadEnabled" then _G.MWConfig.IpadView=val=="true" else settings[key]=val=="true" end
                         end
                     end
+                    do
+                        local val=payload:match("%f[%w_]ModSkin%s*=%s*(%a+)")
+                        if (val=="true" or val=="false") and _G.MWConfig then
+                            _G.MWConfig.ModSkin = (val=="true")
+                        end
+                    end
                     for _,key in ipairs({"IpadFOV","AimSpeed","AimTarget"}) do
                         local val=payload:match("%f[%w_]"..key.."%s*=%s*([%d%.%-]+)")
                         if val then settings[key]=number(val,key=="IpadFOV" and 90 or (key=="AimSpeed" and 100 or 1),key=="AimTarget" and 3 or 120,settings[key]) end
@@ -4928,8 +4933,9 @@ do
         return tonumber(now) or F.TimerClock
     end
     F.Save=function(force)
-        if not F.Dirty or not io or not io.open then return end
-        local lines={"return {", "  IpadEnabled = "..tostring(_G.MWConfig.IpadView==true)..","}
+        if not io or not io.open then return end
+        if not force and not F.Dirty then return end
+        local lines={"return {", "  IpadEnabled = "..tostring(_G.MWConfig and _G.MWConfig.IpadView==true)..",", "  ModSkin = "..tostring(_G.MWConfig and _G.MWConfig.ModSkin==true)..","}
         for _,key in ipairs({"AimEnabled","WallEnabled","Aim2Enabled","MortarEnabled","IpadFOV","AimSpeed","AimTarget","WallVisible","WallOccluded"}) do lines[#lines+1]="  "..key.." = "..tostring(settings[key]).."," end
         for _,key in ipairs({"Name","Line","Health","Distance","EnemyCounter"}) do lines[#lines+1]="  V1_"..key.." = "..tostring(_G.g_Botmater_ESPOptions[key]==true).."," end
         for _,key in ipairs({"Name","Line","Box","Health","Distance","Skeleton","Counter"}) do lines[#lines+1]="  V2_"..key.." = "..tostring(_G.g_vipserver_ESPOptions[key]==true).."," end
@@ -5770,15 +5776,8 @@ _G.g_Botmater_ESPOptions = _G.g_Botmater_ESPOptions or {
     EnemyCounter = true,
 }
 
--- Force ESP V1 core visuals (line thick + health red path always available)
+-- Thickness only — do NOT force feature toggles (would wipe saved on/off state)
 pcall(function()
-    if type(_G.g_Botmater_ESPOptions)=="table" then
-        _G.g_Botmater_ESPOptions.Name = true
-        _G.g_Botmater_ESPOptions.Line = true
-        _G.g_Botmater_ESPOptions.Health = true
-        _G.g_Botmater_ESPOptions.Distance = true
-        _G.g_Botmater_ESPOptions.EnemyCounter = true
-    end
     if type(_G.g_Botmater_VIPShotESP)=="table" then
         _G.g_Botmater_VIPShotESP.TracerThickness = 3.50
     end
@@ -17669,5 +17668,78 @@ pcall(function()
         ticker.AddTimerLoop(0, AutoRestoreLobbySkin, -1, 1.0)
     end
 end)
+
+
+
+-- ============================================================================
+-- MATCH RECOVERY + SETTINGS PERSIST WATCHDOG
+-- Fixes: features die after 1 match; toggles not sticky across restart
+-- ============================================================================
+pcall(function()
+    local function MS_RecoverHacks()
+        pcall(function()
+            if type(g_vipserver_ESPSchedule) == "function" then
+                g_vipserver_ESPSchedule(0.05)
+            end
+        end)
+        pcall(function()
+            if type(g_vipserver_ESPTick) == "function" then
+                g_vipserver_ShotESP = g_vipserver_ShotESP or {}
+                g_vipserver_ShotESP.Running = true
+                pcall(g_vipserver_ESPTick)
+            end
+        end)
+        pcall(function()
+            local F = _G.LunarFeatures
+            if F and F.GetWall and F.GetWall() and _G.StartWallhack then
+                _G.StartWallhack()
+            end
+        end)
+        pcall(function()
+            if _G.MWConfig and _G.MWConfig.ModSkin and _G.AddOutfit then
+                local char = _G.AddOutfit.getLocalChar and _G.AddOutfit.getLocalChar()
+                if char and slua.isValid(char) then
+                    if _G.AddOutfit.bootstrapMatch then pcall(_G.AddOutfit.bootstrapMatch, char) end
+                    if _G.AddOutfit.matchApplyAllSlots then pcall(_G.AddOutfit.matchApplyAllSlots, char) end
+                end
+                if not (_G.AddOutfit.isInRealMatch and _G.AddOutfit.isInRealMatch()) then
+                    if _G.AddOutfit.reapplyLobbyEquipped then pcall(_G.AddOutfit.reapplyLobbyEquipped) end
+                end
+            end
+        end)
+        pcall(function()
+            local F = _G.LunarFeatures
+            if F and F.MarkDirty then F.MarkDirty(true) end
+            if F and F.Save then F.Save(true) end
+        end)
+    end
+
+    local okT, ticker = pcall(function() return require("common.time_ticker") end)
+    if okT and ticker and ticker.AddTimerLoop then
+        ticker.AddTimerLoop(0, function()
+            pcall(MS_RecoverHacks)
+        end, -1, 8.0)
+        if ticker.AddTimerOnce then
+            ticker.AddTimerOnce(2.0, function() pcall(MS_RecoverHacks) end)
+            ticker.AddTimerOnce(6.0, function() pcall(MS_RecoverHacks) end)
+        end
+    end
+
+    pcall(function()
+        if EventSystem and EventSystem.registEvent then
+            local function onTransition()
+                pcall(MS_RecoverHacks)
+                if okT and ticker and ticker.AddTimerOnce then
+                    ticker.AddTimerOnce(1.5, function() pcall(MS_RecoverHacks) end)
+                    ticker.AddTimerOnce(4.0, function() pcall(MS_RecoverHacks) end)
+                end
+            end
+            if EVENTTYPE_LOBBY and EVENTID_ENTER_GAME_BEGIN then
+                EventSystem:registEvent(EVENTTYPE_LOBBY, EVENTID_ENTER_GAME_BEGIN, onTransition)
+            end
+        end
+    end)
+end)
+
 
 return originalExport

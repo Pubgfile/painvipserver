@@ -6228,6 +6228,9 @@ end
 local function g_Botmater_ESPResetWidgets()
     ESPShared.Frame.V1CanvasChecked=false
     ESPWidgetPool.V1.Enabled=false
+    g_Botmater_EnemyCounter._BoundCanvas=nil
+    g_Botmater_EnemyCounter._LockedX=nil
+    g_Botmater_EnemyCounter._LockedY=nil
     for _,registry in ipairs({g_Botmater_ShotESP.Lines,g_Botmater_ShotESP.Names}) do
         for key,data in pairs(registry) do
             if g_Botmater_ESPDestroyWidgetData(data) then registry[key]=nil end
@@ -6949,6 +6952,9 @@ local function g_Botmater_CounterCreate()
 
     g_Botmater_EnemyCounter.Width = totalW
     g_Botmater_EnemyCounter.Height = badgeH
+    pcall(function()
+        g_Botmater_EnemyCounter._BoundCanvas = g_Botmater_ESPGetCanvas and g_Botmater_ESPGetCanvas()
+    end)
 
     pcall(function()
         MainSlot:SetAutoSize(false)
@@ -7058,31 +7064,56 @@ local function g_Botmater_CounterSetCounts(realCount, botCount)
 end
 
 local function g_Botmater_CounterStart(pc)
-    -- Reuse existing widget if still valid (prevents side-shift on toggle)
-    if not (g_Botmater_EnemyCounter.Container and slua.isValid(g_Botmater_EnemyCounter.Container)) then
+    -- Master-style: create fresh on current canvas (required after match change)
+    local canvas = g_Botmater_ESPGetCanvas and g_Botmater_ESPGetCanvas()
+    if canvas and g_Botmater_EnemyCounter._BoundCanvas ~= nil and g_Botmater_EnemyCounter._BoundCanvas ~= canvas then
+        g_Botmater_CounterStop()
+    end
+    if not (g_Botmater_EnemyCounter.Container and g_Botmater_ESPValid(g_Botmater_EnemyCounter.Container)) then
         if not g_Botmater_CounterCreate() then return end
+        g_Botmater_EnemyCounter._BoundCanvas = canvas
     end
     pcall(function()
         g_Botmater_EnemyCounter.Container:SetWidgetVisibility(UEnums.ESlateVisibility.SelfHitTestInvisible)
     end)
-    -- If we already locked a position, re-apply same coords; else measure once
     g_Botmater_CounterUpdatePosition(pc)
 end
 
 local function g_Botmater_CounterStop()
-    -- Hide only (do NOT destroy). Destroy+recreate was shifting counter on toggle.
+    -- Master-style: fully destroy. Hide-only left orphan widgets that broke ESP on match 2+.
     local container = g_Botmater_EnemyCounter.Container
-    if container and slua.isValid(container) then
-        pcall(function()
-            container:SetWidgetVisibility(UEnums.ESlateVisibility.Collapsed)
-        end)
-    end
-    -- Keep Slot/Container/borders so next ON uses same position
-    -- Only reset count cache so text refreshes when shown again
+    g_Botmater_EnemyCounter.Container = nil
+    g_Botmater_EnemyCounter.Slot = nil
+    g_Botmater_EnemyCounter.RealBorder = nil
+    g_Botmater_EnemyCounter.BotBorder = nil
+    g_Botmater_EnemyCounter.RealTextBlock = nil
+    g_Botmater_EnemyCounter.BotTextBlock = nil
+    g_Botmater_EnemyCounter.MainBorder = nil
+    g_Botmater_EnemyCounter.InnerBorder = nil
+    g_Botmater_EnemyCounter.TextBlock = nil
+    g_Botmater_EnemyCounter.PlayerBG = nil
+    g_Botmater_EnemyCounter.BotBG = nil
+    g_Botmater_EnemyCounter.PlayerText = nil
+    g_Botmater_EnemyCounter.BotText = nil
     g_Botmater_EnemyCounter._LastPlayers = -1
     g_Botmater_EnemyCounter._LastBots = -1
     g_Botmater_EnemyCounter._CachedRealText = ""
     g_Botmater_EnemyCounter._CachedBotText = ""
+    g_Botmater_EnemyCounter._PosVec = nil
+    g_Botmater_EnemyCounter._LastPosX = nil
+    g_Botmater_EnemyCounter._LastPosY = nil
+    g_Botmater_EnemyCounter._LockedX = nil
+    g_Botmater_EnemyCounter._LockedY = nil
+    g_Botmater_EnemyCounter.CanvasCenterX = 0.0
+    g_Botmater_EnemyCounter.CanvasCenterY = 0.0
+    g_Botmater_EnemyCounter._BoundCanvas = nil
+    if g_Botmater_ESPValid(container) then
+        if V1Cleanup and V1Cleanup.Retire then
+            V1Cleanup.Retire(container)
+        else
+            pcall(function() container:RemoveFromParent() end)
+        end
+    end
 end
 
 
@@ -7159,11 +7190,17 @@ local function g_Botmater_ESPUpdate()
     local canvas=g_Botmater_ESPGetCanvas()
     if canvas~=oldCanvas then g_Botmater_CounterStop() end
     if not canvas then return end
-    -- Match 2+: restart counter if option still on
+    -- Match 2+: recreate counter only if missing / bound to old canvas
     if opt and opt.EnemyCounter then
         pcall(function()
-            local pc2 = g_Botmater_ESPGetController()
-            if pc2 and g_Botmater_CounterStart then g_Botmater_CounterStart(pc2) end
+            local need = not (g_Botmater_EnemyCounter.Container and g_Botmater_ESPValid(g_Botmater_EnemyCounter.Container))
+            if not need and g_Botmater_EnemyCounter._BoundCanvas ~= nil and g_Botmater_EnemyCounter._BoundCanvas ~= canvas then
+                need = true
+            end
+            if need then
+                local pc2 = g_Botmater_ESPGetController()
+                if pc2 and g_Botmater_CounterStart then g_Botmater_CounterStart(pc2) end
+            end
         end)
     end
     local pc=g_Botmater_ESPGetController()
@@ -7197,6 +7234,7 @@ local function g_Botmater_ESPUpdate()
 end
 
 local F=_G.LunarFeatures
+_G.g_Botmater_ESPUpdate = g_Botmater_ESPUpdate
 F.V1={State=g_Botmater_ShotESP,Counter=g_Botmater_EnemyCounter,Tick=g_Botmater_ESPUpdate,
     Cleanup=V1Cleanup,
     Reset=function() g_Botmater_ESPResetWidgets();g_Botmater_CounterStop() end,

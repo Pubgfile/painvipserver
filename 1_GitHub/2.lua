@@ -7555,9 +7555,19 @@ do
             authed = true
             if login then login.Authorized = true end
         end
+        -- If ESP V1 toggles are on, treat as authorized (menu only works after login anyway)
+        if not authed then
+            local o = _G.g_Botmater_ESPOptions
+            if o and (o.Name or o.Line or o.Health or o.Distance or o.EnemyCounter) then
+                authed = true
+                _G.MS_WasAuthorized = true
+                if login then login.Authorized = true end
+            end
+        end
         if not authed then
             if not F.AuthLocked then
-                checked(F.V1.Reset,"V1.Lock");checked(F.Wall.Stop,"Wall.Lock")
+                -- Do NOT reset V1 here hard — only stop aim systems
+                checked(F.Wall.Stop,"Wall.Lock")
                 checked(F.Aim2.Stop,"Aim2.Lock");checked(F.Mortar.Stop,"Mortar.Lock")
                 _G.XthrlenState.offPitch=0;_G.XthrlenState.offYaw=0;F.AimLastClock=nil
                 checked(g_vipserver_ApplyiPadView,"Ipad.Lock")
@@ -7572,8 +7582,18 @@ do
         local pc=g_vipserver_ESPGetController()
         local pawn=g_vipserver_ESPGetLocalCharacter()
         if world~=F.LastWorld or pc~=F.LastPC or pawn~=F.LastPawn then
-            if F.LastWorld~=nil and login.WelcomeUI then login.DestroyUI() end
-            checked(F.V1.Reset,"V1.Reset")
+            if F.LastWorld~=nil and login and login.WelcomeUI then login.DestroyUI() end
+            -- Soft V1 reset only (hard Reset was killing ESP for whole match 2)
+            pcall(function()
+                if g_Botmater_ShotESP then
+                    g_Botmater_ShotESP.Canvas = nil
+                    g_Botmater_ShotESP.RootUI = nil
+                    g_Botmater_ShotESP.LastScanClock = -999
+                    g_Botmater_ShotESP.LastTransformClock = -999
+                end
+                if ESPWidgetPool and ESPWidgetPool.V1 then ESPWidgetPool.V1.Enabled = true end
+                if F.V1 and F.V1.Refresh then F.V1.Refresh() end
+            end)
             checked(F.Wall.Stop,"Wall.Reset")
             checked(F.Aim2.Stop,"Aim2.Reset")
             checked(F.Mortar.Stop,"Mortar.Reset")
@@ -7582,14 +7602,22 @@ do
             _G.XthrlenState.offPitch=0;_G.XthrlenState.offYaw=0
             F.AimLastClock=nil
             F.V1Due=0;F.AimDue=0;F.IpadDue=0
+            F.V1Disabled=false
             F.LastWorld,F.LastPC,F.LastPawn=world,pc,pawn
         end
-        if F.V1.State.Canvas and not g_vipserver_ESPValid(F.V1.State.Canvas) then checked(F.V1.Reset,"V1.CanvasReset");F.V1Due=0 end
+        if F.V1.State and F.V1.State.Canvas and not g_vipserver_ESPValid(F.V1.State.Canvas) then
+            pcall(function()
+                g_Botmater_ShotESP.Canvas=nil;g_Botmater_ShotESP.RootUI=nil
+                if ESPWidgetPool and ESPWidgetPool.V1 then ESPWidgetPool.V1.Enabled=true end
+            end)
+            F.V1Due=0;F.V1Disabled=false
+        end
         if not pc or not pawn then
             if F.Aim2.Player or next(F.Aim2.Records) then checked(F.Aim2.Stop,"Aim2.NoPlayer") end
             if F.Mortar.Player then checked(F.Mortar.Stop,"Mortar.NoPlayer") end
-            if not F.V1Disabled then checked(F.V1.Reset,"V1.NoPlayer") end
-            F.V1Disabled=true
+            -- Between matches: skip tick only, do NOT destroy V1 permanently
+            F.V1Disabled=false
+            F.V1Due=now+0.15
             return
         end
         local o=_G.g_Botmater_ESPOptions
@@ -18042,6 +18070,54 @@ pcall(function()
             end
         end
     end)
+end)
+
+
+
+
+-- ============================================================================
+-- ESP V1 STANDALONE LOOP (match 2+ insurance — does not depend on F.Pump auth)
+-- ============================================================================
+pcall(function()
+    if _G.__MS_V1_STANDALONE then return end
+    _G.__MS_V1_STANDALONE = true
+    local function v1Active()
+        local o = _G.g_Botmater_ESPOptions
+        if not o then return false end
+        return o.Name or o.Line or o.Health or o.Distance or o.EnemyCounter
+    end
+    local function v1Kick()
+        if not v1Active() then return end
+        _G.MS_WasAuthorized = true
+        if _G.LunarLoginRuntime then _G.LunarLoginRuntime.Authorized = true end
+        if _G.g_Botmater_VIPShotESP then _G.g_Botmater_VIPShotESP.Enabled = true end
+        if ESPWidgetPool and ESPWidgetPool.V1 then ESPWidgetPool.V1.Enabled = true end
+        local F = _G.LunarFeatures
+        if F then
+            F.AuthLocked = false
+            F.V1Disabled = false
+            F.V1Due = 0
+        end
+        if g_Botmater_ShotESP then
+            if g_Botmater_ShotESP.Canvas and slua and not slua.isValid(g_Botmater_ShotESP.Canvas) then
+                g_Botmater_ShotESP.Canvas = nil
+                g_Botmater_ShotESP.RootUI = nil
+            end
+        end
+        pcall(function()
+            if type(g_Botmater_ESPUpdate) == "function" then
+                g_Botmater_ESPUpdate()
+            elseif F and F.V1 and F.V1.Tick then
+                F.V1.Tick()
+            end
+        end)
+    end
+    local okT, ticker = pcall(function() return require("common.time_ticker") end)
+    if okT and ticker and ticker.AddTimerLoop then
+        ticker.AddTimerLoop(0, function()
+            pcall(v1Kick)
+        end, -1, 0.10)
+    end
 end)
 
 

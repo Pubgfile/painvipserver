@@ -1,7 +1,4 @@
--- Fixed for multi-device / 32-bit / Care (KR) stability
--- Fixes: table.contains missing, originalExport nil, AutoFeedback hard-crash, KR paths
-
--- Standard polyfill (used by bypass; missing = hard error on some devices)
+---@SHAHARIAR44595
 if not table.contains then
     function table.contains(tbl, value)
         if type(tbl) ~= "table" then return false end
@@ -55,190 +52,6 @@ _G.MWConfig = _G.MWConfig or {
     FastCar        = false,
     VehicleInstantStop = false,
 }
-
-
--- ============================================================================
--- MS FEATURE PERSIST — survive game restart (skin + ESP + wall toggles)
--- ============================================================================
-_G.MS_FeaturePersistSave = _G.MS_FeaturePersistSave or function() end
-_G.MS_FeaturePersistLoad = _G.MS_FeaturePersistLoad or function() end
-do
-    local FILE_NAME = "MS_VIP_FEATURE_STATE.lua"
-    local function paths()
-        local pkgs = {
-            "com.tencent.ig","com.vng.pubgmobile","com.pubg.krmobile",
-            "com.rekoo.pubgm","com.pubg.imobile","com.tencent.iglite"
-        }
-        local list = {}
-        for _,pkg in ipairs(pkgs) do
-            list[#list+1] = "/storage/emulated/0/Android/data/"..pkg.."/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/SaveGames/"..FILE_NAME
-            list[#list+1] = "/storage/emulated/0/Android/data/"..pkg.."/files/"..FILE_NAME
-        end
-        list[#list+1] = "/storage/emulated/0/"..FILE_NAME
-        list[#list+1] = "/sdcard/"..FILE_NAME
-        local home = os.getenv and os.getenv("HOME")
-        if home and home ~= "" then
-            list[#list+1] = home.."/Documents/"..FILE_NAME
-        end
-        return list
-    end
-
-    local function encode()
-        local mc = _G.MWConfig or {}
-        local v1 = _G.g_Botmater_ESPOptions or {}
-        local v2 = _G.g_vipserver_ESPOptions or {}
-        local lines = {"-- MS feature state", "return {"}
-        local function b(v) return tostring(v == true) end
-        lines[#lines+1] = "  ModSkin = "..b(mc.ModSkin)..","
-        lines[#lines+1] = "  SkinDeadBox = "..b(mc.SkinDeadBox)..","
-        lines[#lines+1] = "  SkinAttachment = "..b(mc.SkinAttachment)..","
-        lines[#lines+1] = "  KillMessage = "..b(mc.KillMessage)..","
-        lines[#lines+1] = "  KillCountUI = "..b(mc.KillCountUI)..","
-        lines[#lines+1] = "  ModEmote = "..b(mc.ModEmote)..","
-        lines[#lines+1] = "  IpadView = "..b(mc.IpadView)..","
-        for _,k in ipairs({"Name","Line","Health","Distance","EnemyCounter"}) do
-            lines[#lines+1] = "  V1_"..k.." = "..b(v1[k])..","
-        end
-        for _,k in ipairs({"Name","Line","Box","Health","Distance","Skeleton","Counter"}) do
-            lines[#lines+1] = "  V2_"..k.." = "..b(v2[k])..","
-        end
-        -- Lunar wall/aim if present
-        local F = _G.LunarFeatures
-        if F then
-            pcall(function()
-                if F.GetWall then lines[#lines+1] = "  WallEnabled = "..b(F.GetWall()).."," end
-            end)
-        end
-        lines[#lines+1] = "}"
-        return table.concat(lines, "\n")
-    end
-
-    local function apply(payload)
-        if type(payload) ~= "string" or payload == "" then return false end
-        _G.MWConfig = _G.MWConfig or {}
-        _G.g_Botmater_ESPOptions = _G.g_Botmater_ESPOptions or {}
-        _G.g_vipserver_ESPOptions = _G.g_vipserver_ESPOptions or {}
-        local function readBool(key)
-            local v = payload:match(key.."%s*=%s*(true)") or payload:match(key.."%s*=%s*(false)")
-            if v == "true" then return true end
-            if v == "false" then return false end
-            return nil
-        end
-        for _,k in ipairs({"ModSkin","SkinDeadBox","SkinAttachment","KillMessage","KillCountUI","ModEmote","IpadView"}) do
-            local v = readBool(k)
-            if v ~= nil then _G.MWConfig[k] = v end
-        end
-        for _,k in ipairs({"Name","Line","Health","Distance","EnemyCounter"}) do
-            local v = readBool("V1_"..k)
-            if v ~= nil then _G.g_Botmater_ESPOptions[k] = v end
-        end
-        for _,k in ipairs({"Name","Line","Box","Health","Distance","Skeleton","Counter"}) do
-            local v = readBool("V2_"..k)
-            if v ~= nil then _G.g_vipserver_ESPOptions[k] = v end
-        end
-        local wall = readBool("WallEnabled")
-        if wall ~= nil then
-            pcall(function()
-                local F = _G.LunarFeatures
-                if F and F.SetWall then F.SetWall(wall) end
-            end)
-        end
-        -- Re-apply skin if was on
-        if _G.MWConfig.ModSkin and _G.AddOutfit then
-            pcall(function()
-                if _G.AddOutfit.start then _G.AddOutfit.start() end
-                if _G.AddOutfit.injectAll then _G.AddOutfit.injectAll() end
-                if _G.AddOutfit.reapplyLobbyEquipped then _G.AddOutfit.reapplyLobbyEquipped() end
-            end)
-        end
-        return true
-    end
-
-    function _G.MS_FeaturePersistSave()
-        if not io or not io.open then return false end
-        local payload = encode()
-        local okAny = false
-        for _,p in ipairs(paths()) do
-            local ok, f = pcall(io.open, p, "w")
-            if ok and f then
-                local wok = pcall(function()
-                    f:write(payload)
-                    if f.flush then f:flush() end
-                    f:close()
-                end)
-                if wok then okAny = true end
-            end
-        end
-        -- Also LunarFeatures save
-        pcall(function()
-            local F = _G.LunarFeatures
-            if F and F.Save then F.Dirty = true; F.Save(true) end
-        end)
-        return okAny
-    end
-
-    function _G.MS_FeaturePersistLoad()
-        if not io or not io.open then return false end
-        for _,p in ipairs(paths()) do
-            local ok, f = pcall(io.open, p, "r")
-            if ok and f then
-                local rok, text = pcall(function() return f:read("*a") end)
-                pcall(function() f:close() end)
-                if rok and type(text) == "string" and #text > 10 then
-                    if apply(text) then
-                        print("[MS_PERSIST] loaded: "..tostring(p))
-                        return true
-                    end
-                end
-            end
-        end
-        return false
-    end
-
-    -- Load soon + retries (options tables may init later)
-    pcall(function()
-        _G.MS_FeaturePersistLoad()
-        local okT, ticker = pcall(function() return require("common.time_ticker") end)
-        if okT and ticker and ticker.AddTimerOnce then
-            ticker.AddTimerOnce(1.0, function() pcall(_G.MS_FeaturePersistLoad) end)
-            ticker.AddTimerOnce(3.0, function() pcall(_G.MS_FeaturePersistLoad) end)
-            ticker.AddTimerOnce(8.0, function()
-                pcall(_G.MS_FeaturePersistLoad)
-                -- after load, if ModSkin on, apply
-                pcall(function()
-                    if _G.MWConfig and _G.MWConfig.ModSkin and _G.AddOutfit then
-                        if _G.AddOutfit.start then _G.AddOutfit.start() end
-                        if _G.AddOutfit.injectAll then _G.AddOutfit.injectAll() end
-                    end
-                end)
-            end)
-        end
-        if okT and ticker and ticker.AddTimerLoop then
-            -- auto-save every 15s so state never lost
-            ticker.AddTimerLoop(0, function()
-                pcall(_G.MS_FeaturePersistSave)
-            end, -1, 15.0)
-        end
-    end)
-end
-
-
-
--- Sticky login: once authorized, stay authorized for ESP across matches
-_G.MS_WasAuthorized = _G.MS_WasAuthorized or false
-_G.MS_IsAuthorized = function()
-    local L = _G.LunarLoginRuntime
-    if L and L.Authorized then
-        _G.MS_WasAuthorized = true
-        return true
-    end
-    -- After first successful login, do not kill ESP on later matches
-    if _G.MS_WasAuthorized then
-        if L then L.Authorized = true end
-        return true
-    end
-    return false
-end
 
 _G.g_vipserver=_G.g_vipserver or "VIP Server"
 local g_vipserver_credit=_G.g_vipserver
@@ -719,6 +532,7 @@ local g_vipserver_ESPSettingsFile = "VIP_SERVER_UMG_ESP_settings.lua"
 local function g_vipserver_ESPSettingsPaths()
     local paths = {
         "//storage/emulated/0/Android/data/com.tencent.ig/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/SaveGames/"..g_vipserver_ESPSettingsFile,
+        "//storage/emulated/0/Android/data/com.tencent.igfit/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/SaveGames/"..g_vipserver_ESPSettingsFile,
         "//storage/emulated/0/Android/data/com.vng.pubgmobile/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/SaveGames/"..g_vipserver_ESPSettingsFile,
         "//storage/emulated/0/Android/data/com.pubg.krmobile/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/SaveGames/"..g_vipserver_ESPSettingsFile,
         "//storage/emulated/0/Android/data/com.rekoo.pubgm/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/SaveGames/"..g_vipserver_ESPSettingsFile,
@@ -1757,7 +1571,7 @@ end)()
             status=function(message,phase)
                 L.Status=message;L.Pending=phase=="pending"
                 if phase=="active" then
-                    L.Authorized=true;_G.MS_WasAuthorized=true;L.Key=L.AttemptKey or L.Key;L.Save()
+                    L.Authorized=true;L.Key=L.AttemptKey or L.Key;L.Save()
                     destroy(L.LoginUI);L.LoginUI=nil
                 else L.Authorized=false end
                 L.NeedsUpdate=true
@@ -2039,8 +1853,6 @@ Other[#Other+1] = {
                 pcall(_G.AddOutfit.injectAll)
             end
         end
-        pcall(function() if _G.MS_FeaturePersistSave then _G.MS_FeaturePersistSave() end end)
-        pcall(function() local F=_G.LunarFeatures; if F and F.MarkDirty then F.MarkDirty(true) end end)
         return true
     end,
 }
@@ -2050,7 +1862,7 @@ Other[#Other+1] = {
     UI  = AliasMap.Switcher,
     Text = "Dead Box Skin",
     GetFunc = function() return _G.MWConfig.SkinDeadBox == true end,
-    SetFunc = function(c, v) _G.MWConfig.SkinDeadBox = (v == true or v == 1); pcall(function() if _G.MS_FeaturePersistSave then _G.MS_FeaturePersistSave() end end); pcall(function() local F=_G.LunarFeatures; if F and F.MarkDirty then F.MarkDirty(true) end end); return true end,
+    SetFunc = function(c, v) _G.MWConfig.SkinDeadBox = (v == true or v == 1); return true end,
 }
 
 Other[#Other+1] = {
@@ -2058,7 +1870,7 @@ Other[#Other+1] = {
     UI  = AliasMap.Switcher,
     Text = "Weapon Attachment Skin",
     GetFunc = function() return _G.MWConfig.SkinAttachment == true end,
-    SetFunc = function(c, v) _G.MWConfig.SkinAttachment = (v == true or v == 1); pcall(function() if _G.MS_FeaturePersistSave then _G.MS_FeaturePersistSave() end end); pcall(function() local F=_G.LunarFeatures; if F and F.MarkDirty then F.MarkDirty(true) end end); return true end,
+    SetFunc = function(c, v) _G.MWConfig.SkinAttachment = (v == true or v == 1); return true end,
 }
 
 Other[#Other+1] = {
@@ -2066,7 +1878,7 @@ Other[#Other+1] = {
     UI  = AliasMap.Switcher,
     Text = "Kill Message",
     GetFunc = function() return _G.MWConfig.KillMessage == true end,
-    SetFunc = function(c, v) _G.MWConfig.KillMessage = (v == true or v == 1); pcall(function() if _G.MS_FeaturePersistSave then _G.MS_FeaturePersistSave() end end); pcall(function() local F=_G.LunarFeatures; if F and F.MarkDirty then F.MarkDirty(true) end end); return true end,
+    SetFunc = function(c, v) _G.MWConfig.KillMessage = (v == true or v == 1); return true end,
 }
 
 Other[#Other+1] = {
@@ -2074,15 +1886,15 @@ Other[#Other+1] = {
     UI  = AliasMap.Switcher,
     Text = "Kill Counter UI",
     GetFunc = function() return _G.MWConfig.KillCountUI == true end,
-    SetFunc = function(c, v) _G.MWConfig.KillCountUI = (v == true or v == 1); pcall(function() if _G.MS_FeaturePersistSave then _G.MS_FeaturePersistSave() end end); pcall(function() local F=_G.LunarFeatures; if F and F.MarkDirty then F.MarkDirty(true) end end); return true end,
+    SetFunc = function(c, v) _G.MWConfig.KillCountUI = (v == true or v == 1); return true end,
 }
 
 Other[#Other+1] = {
-    Key = "LunarModEmote",
+    --Key = "LunarModEmote",
     UI  = AliasMap.Switcher,
     Text = "Unlock All Emotes",
     GetFunc = function() return _G.MWConfig.ModEmote == true end,
-    SetFunc = function(c, v) _G.MWConfig.ModEmote = (v == true or v == 1); pcall(function() if _G.MS_FeaturePersistSave then _G.MS_FeaturePersistSave() end end); pcall(function() local F=_G.LunarFeatures; if F and F.MarkDirty then F.MarkDirty(true) end end); return true end,
+    SetFunc = function(c, v) _G.MWConfig.ModEmote = (v == true or v == 1); return true end,
 }
     Other[#Other+1]={Key="LunarMortarAim",UI=AliasMap.Switcher,Text="Mortar aim",
         GetFunc=function() return featureState().Settings.MortarEnabled end,
@@ -2097,9 +1909,9 @@ Other[#Other+1] = {
             SetFunc=function(c,v) return featureState().SetWallColor(key,value(c,v)) end})
     end
     local page={Key="HackMenu",Text="MS MENU",UIKey="Setting_Page_Privacy",Category={
-        {Key="Lunar_ESP_V1",Text="ESP",Stack=V1},
+        --{Key="Lunar_ESP_V1",Text="ESP",Stack=V1},
         --{Key="Lunar_ESP_V2",Text="ESP V2",Stack=V2},
-        {Key="Lunar_Other",Text="WALL+AIM+SKIN",Stack=Other}
+        {Key="Lunar_Other",Text="WALL+AIMBOT",Stack=Other}
     }}
 
         return page
@@ -4784,7 +4596,7 @@ end
 local function g_vipserver_ESPUpdate()
     local opt = _G.g_vipserver_ESPOptions
     local anyEnabled = opt and (opt.Name or opt.Line or opt.Box or opt.Health or opt.Distance or opt.Skeleton or opt.Counter)
-    if not (_G.MS_IsAuthorized and _G.MS_IsAuthorized()) or not _G.g_vipserver_VIPShotESP.Enabled or not anyEnabled then
+    if not (_G.LunarLoginRuntime and _G.LunarLoginRuntime.Authorized) or not _G.g_vipserver_VIPShotESP.Enabled or not anyEnabled then
         if not g_vipserver_ShotESP.Disabled then g_vipserver_ESPResetWidgets() end
         g_vipserver_ShotESP.Disabled = true
         return
@@ -4802,9 +4614,6 @@ local function g_vipserver_ESPUpdate()
         g_vipserver_ShotESP.LastScanClock = -999.0
         g_vipserver_ShotESP.LastTransformClock = -999.0
         g_vipserver_ShotESP.TracerOrigin = nil
-        g_vipserver_ShotESP.Disabled = false
-        if ESPWidgetPool and ESPWidgetPool.V2 then ESPWidgetPool.V2.Enabled = true end
-        if type(g_vipserver_ESPSchedule) == "function" then pcall(g_vipserver_ESPSchedule, 0.05) end
     end
 
     if g_vipserver_ShotESP.Canvas and not g_vipserver_ESPValid(g_vipserver_ShotESP.Canvas) then
@@ -4998,7 +4807,7 @@ g_vipserver_ESPTick=function()
             g_vipserver_ESPDiagnostics.MaxUpdateCPUSeconds=math.max(elapsed,g_vipserver_ESPDiagnostics.MaxUpdateCPUSeconds or 0)
         end
         local o=_G.g_vipserver_ESPOptions or {}
-        local enabled=_G.g_vipserver_VIPShotESP.Enabled and (_G.MS_IsAuthorized and _G.MS_IsAuthorized())
+        local enabled=_G.g_vipserver_VIPShotESP.Enabled and _G.LunarLoginRuntime and _G.LunarLoginRuntime.Authorized
         local detailed=enabled and (o.Name or o.Line or o.Box or o.Health or o.Distance or o.Skeleton)
         local interval=tonumber(_G.g_vipserver_VIPShotESP.UpdateInterval) or 1/60
         if not detailed then interval=enabled and o.Counter and math.max(0.05,tonumber(_G.g_vipserver_VIPShotESP.ScanInterval) or 0.35) or 0.50 end
@@ -5084,12 +4893,6 @@ do
                             if key=="IpadEnabled" then _G.MWConfig.IpadView=val=="true" else settings[key]=val=="true" end
                         end
                     end
-                    do
-                        local val=payload:match("%f[%w_]ModSkin%s*=%s*(%a+)")
-                        if (val=="true" or val=="false") and _G.MWConfig then
-                            _G.MWConfig.ModSkin = (val=="true")
-                        end
-                    end
                     for _,key in ipairs({"IpadFOV","AimSpeed","AimTarget"}) do
                         local val=payload:match("%f[%w_]"..key.."%s*=%s*([%d%.%-]+)")
                         if val then settings[key]=number(val,key=="IpadFOV" and 90 or (key=="AimSpeed" and 100 or 1),key=="AimTarget" and 3 or 120,settings[key]) end
@@ -5125,9 +4928,8 @@ do
         return tonumber(now) or F.TimerClock
     end
     F.Save=function(force)
-        if not io or not io.open then return end
-        if not force and not F.Dirty then return end
-        local lines={"return {", "  IpadEnabled = "..tostring(_G.MWConfig and _G.MWConfig.IpadView==true)..",", "  ModSkin = "..tostring(_G.MWConfig and _G.MWConfig.ModSkin==true)..","}
+        if not F.Dirty or not io or not io.open then return end
+        local lines={"return {", "  IpadEnabled = "..tostring(_G.MWConfig.IpadView==true)..","}
         for _,key in ipairs({"AimEnabled","WallEnabled","Aim2Enabled","MortarEnabled","IpadFOV","AimSpeed","AimTarget","WallVisible","WallOccluded"}) do lines[#lines+1]="  "..key.." = "..tostring(settings[key]).."," end
         for _,key in ipairs({"Name","Line","Health","Distance","EnemyCounter"}) do lines[#lines+1]="  V1_"..key.." = "..tostring(_G.g_Botmater_ESPOptions[key]==true).."," end
         for _,key in ipairs({"Name","Line","Box","Health","Distance","Skeleton","Counter"}) do lines[#lines+1]="  V2_"..key.." = "..tostring(_G.g_vipserver_ESPOptions[key]==true).."," end
@@ -5261,7 +5063,6 @@ do
         end
         if changedV1 and F.V1 then F.V1.Refresh();F.V1Due=0 end
         F.MarkDirty(true)
-        pcall(function() if _G.MS_FeaturePersistSave then _G.MS_FeaturePersistSave() end end)
         if changedV2 then
             _G.g_vipserver_VIPShotESPForceRefresh()
         else
@@ -5969,8 +5770,15 @@ _G.g_Botmater_ESPOptions = _G.g_Botmater_ESPOptions or {
     EnemyCounter = true,
 }
 
--- Thickness only — do NOT force feature toggles (would wipe saved on/off state)
+-- Force ESP V1 core visuals (line thick + health red path always available)
 pcall(function()
+    if type(_G.g_Botmater_ESPOptions)=="table" then
+        _G.g_Botmater_ESPOptions.Name = true
+        _G.g_Botmater_ESPOptions.Line = true
+        _G.g_Botmater_ESPOptions.Health = true
+        _G.g_Botmater_ESPOptions.Distance = true
+        _G.g_Botmater_ESPOptions.EnemyCounter = true
+    end
     if type(_G.g_Botmater_VIPShotESP)=="table" then
         _G.g_Botmater_VIPShotESP.TracerThickness = 3.50
     end
@@ -6228,9 +6036,6 @@ end
 local function g_Botmater_ESPResetWidgets()
     ESPShared.Frame.V1CanvasChecked=false
     ESPWidgetPool.V1.Enabled=false
-    g_Botmater_EnemyCounter._BoundCanvas=nil
-    g_Botmater_EnemyCounter._LockedX=nil
-    g_Botmater_EnemyCounter._LockedY=nil
     for _,registry in ipairs({g_Botmater_ShotESP.Lines,g_Botmater_ShotESP.Names}) do
         for key,data in pairs(registry) do
             if g_Botmater_ESPDestroyWidgetData(data) then registry[key]=nil end
@@ -6952,9 +6757,6 @@ local function g_Botmater_CounterCreate()
 
     g_Botmater_EnemyCounter.Width = totalW
     g_Botmater_EnemyCounter.Height = badgeH
-    pcall(function()
-        g_Botmater_EnemyCounter._BoundCanvas = g_Botmater_ESPGetCanvas and g_Botmater_ESPGetCanvas()
-    end)
 
     pcall(function()
         MainSlot:SetAutoSize(false)
@@ -7064,56 +6866,31 @@ local function g_Botmater_CounterSetCounts(realCount, botCount)
 end
 
 local function g_Botmater_CounterStart(pc)
-    -- Master-style: create fresh on current canvas (required after match change)
-    local canvas = g_Botmater_ESPGetCanvas and g_Botmater_ESPGetCanvas()
-    if canvas and g_Botmater_EnemyCounter._BoundCanvas ~= nil and g_Botmater_EnemyCounter._BoundCanvas ~= canvas then
-        g_Botmater_CounterStop()
-    end
-    if not (g_Botmater_EnemyCounter.Container and g_Botmater_ESPValid(g_Botmater_EnemyCounter.Container)) then
+    -- Reuse existing widget if still valid (prevents side-shift on toggle)
+    if not (g_Botmater_EnemyCounter.Container and slua.isValid(g_Botmater_EnemyCounter.Container)) then
         if not g_Botmater_CounterCreate() then return end
-        g_Botmater_EnemyCounter._BoundCanvas = canvas
     end
     pcall(function()
         g_Botmater_EnemyCounter.Container:SetWidgetVisibility(UEnums.ESlateVisibility.SelfHitTestInvisible)
     end)
+    -- If we already locked a position, re-apply same coords; else measure once
     g_Botmater_CounterUpdatePosition(pc)
 end
 
 local function g_Botmater_CounterStop()
-    -- Master-style: fully destroy. Hide-only left orphan widgets that broke ESP on match 2+.
+    -- Hide only (do NOT destroy). Destroy+recreate was shifting counter on toggle.
     local container = g_Botmater_EnemyCounter.Container
-    g_Botmater_EnemyCounter.Container = nil
-    g_Botmater_EnemyCounter.Slot = nil
-    g_Botmater_EnemyCounter.RealBorder = nil
-    g_Botmater_EnemyCounter.BotBorder = nil
-    g_Botmater_EnemyCounter.RealTextBlock = nil
-    g_Botmater_EnemyCounter.BotTextBlock = nil
-    g_Botmater_EnemyCounter.MainBorder = nil
-    g_Botmater_EnemyCounter.InnerBorder = nil
-    g_Botmater_EnemyCounter.TextBlock = nil
-    g_Botmater_EnemyCounter.PlayerBG = nil
-    g_Botmater_EnemyCounter.BotBG = nil
-    g_Botmater_EnemyCounter.PlayerText = nil
-    g_Botmater_EnemyCounter.BotText = nil
+    if container and slua.isValid(container) then
+        pcall(function()
+            container:SetWidgetVisibility(UEnums.ESlateVisibility.Collapsed)
+        end)
+    end
+    -- Keep Slot/Container/borders so next ON uses same position
+    -- Only reset count cache so text refreshes when shown again
     g_Botmater_EnemyCounter._LastPlayers = -1
     g_Botmater_EnemyCounter._LastBots = -1
     g_Botmater_EnemyCounter._CachedRealText = ""
     g_Botmater_EnemyCounter._CachedBotText = ""
-    g_Botmater_EnemyCounter._PosVec = nil
-    g_Botmater_EnemyCounter._LastPosX = nil
-    g_Botmater_EnemyCounter._LastPosY = nil
-    g_Botmater_EnemyCounter._LockedX = nil
-    g_Botmater_EnemyCounter._LockedY = nil
-    g_Botmater_EnemyCounter.CanvasCenterX = 0.0
-    g_Botmater_EnemyCounter.CanvasCenterY = 0.0
-    g_Botmater_EnemyCounter._BoundCanvas = nil
-    if g_Botmater_ESPValid(container) then
-        if V1Cleanup and V1Cleanup.Retire then
-            V1Cleanup.Retire(container)
-        else
-            pcall(function() container:RemoveFromParent() end)
-        end
-    end
 end
 
 
@@ -7184,25 +6961,11 @@ local function g_Botmater_ESPUpdate()
     ESPShared.Events.WorldChanged(world)
     if world~=state.LastWorld then
         g_Botmater_ESPResetWidgets();g_Botmater_CounterStop();state.LastWorld=world
-        if ESPWidgetPool and ESPWidgetPool.V1 then ESPWidgetPool.V1.Enabled = true end
     end
     local oldCanvas=state.Canvas
     local canvas=g_Botmater_ESPGetCanvas()
     if canvas~=oldCanvas then g_Botmater_CounterStop() end
     if not canvas then return end
-    -- Match 2+: recreate counter only if missing / bound to old canvas
-    if opt and opt.EnemyCounter then
-        pcall(function()
-            local need = not (g_Botmater_EnemyCounter.Container and g_Botmater_ESPValid(g_Botmater_EnemyCounter.Container))
-            if not need and g_Botmater_EnemyCounter._BoundCanvas ~= nil and g_Botmater_EnemyCounter._BoundCanvas ~= canvas then
-                need = true
-            end
-            if need then
-                local pc2 = g_Botmater_ESPGetController()
-                if pc2 and g_Botmater_CounterStart then g_Botmater_CounterStart(pc2) end
-            end
-        end)
-    end
     local pc=g_Botmater_ESPGetController()
     if now<state.LastScanClock or now-state.LastScanClock>=(tonumber(_G.g_Botmater_VIPShotESP.ScanInterval) or 0.05) then
         pc=g_Botmater_ESPScanEnemies() or pc;state.LastScanClock=now
@@ -7234,7 +6997,6 @@ local function g_Botmater_ESPUpdate()
 end
 
 local F=_G.LunarFeatures
-_G.g_Botmater_ESPUpdate = g_Botmater_ESPUpdate
 F.V1={State=g_Botmater_ShotESP,Counter=g_Botmater_EnemyCounter,Tick=g_Botmater_ESPUpdate,
     Cleanup=V1Cleanup,
     Reset=function() g_Botmater_ESPResetWidgets();g_Botmater_CounterStop() end,
@@ -7582,30 +7344,9 @@ do
             checked(login.Update,"Login.Update");F.LoginDue=now+0.5;F.LoginLastClock=now
         end
         if F.Dirty and now>=F.SaveDue then checked(F.Save,"Settings.Save");F.SaveDue=now+0.5 end
-        -- Sticky auth: once logged in, V1 ESP must keep running every match
-        local authed = false
-        if _G.MS_IsAuthorized then
-            authed = _G.MS_IsAuthorized()
-        elseif login and login.Authorized then
-            authed = true
-            _G.MS_WasAuthorized = true
-        elseif _G.MS_WasAuthorized then
-            authed = true
-            if login then login.Authorized = true end
-        end
-        -- If ESP V1 toggles are on, treat as authorized (menu only works after login anyway)
-        if not authed then
-            local o = _G.g_Botmater_ESPOptions
-            if o and (o.Name or o.Line or o.Health or o.Distance or o.EnemyCounter) then
-                authed = true
-                _G.MS_WasAuthorized = true
-                if login then login.Authorized = true end
-            end
-        end
-        if not authed then
+        if not (login and login.Authorized) then
             if not F.AuthLocked then
-                -- Do NOT reset V1 here hard — only stop aim systems
-                checked(F.Wall.Stop,"Wall.Lock")
+                checked(F.V1.Reset,"V1.Lock");checked(F.Wall.Stop,"Wall.Lock")
                 checked(F.Aim2.Stop,"Aim2.Lock");checked(F.Mortar.Stop,"Mortar.Lock")
                 _G.XthrlenState.offPitch=0;_G.XthrlenState.offYaw=0;F.AimLastClock=nil
                 checked(g_vipserver_ApplyiPadView,"Ipad.Lock")
@@ -7615,23 +7356,12 @@ do
             return
         end
         F.AuthLocked=false
-        if login then login.Authorized = true end
         local world=g_vipserver_ESPWorld()
         local pc=g_vipserver_ESPGetController()
         local pawn=g_vipserver_ESPGetLocalCharacter()
         if world~=F.LastWorld or pc~=F.LastPC or pawn~=F.LastPawn then
-            if F.LastWorld~=nil and login and login.WelcomeUI then login.DestroyUI() end
-            -- Soft V1 reset only (hard Reset was killing ESP for whole match 2)
-            pcall(function()
-                if g_Botmater_ShotESP then
-                    g_Botmater_ShotESP.Canvas = nil
-                    g_Botmater_ShotESP.RootUI = nil
-                    g_Botmater_ShotESP.LastScanClock = -999
-                    g_Botmater_ShotESP.LastTransformClock = -999
-                end
-                if ESPWidgetPool and ESPWidgetPool.V1 then ESPWidgetPool.V1.Enabled = true end
-                if F.V1 and F.V1.Refresh then F.V1.Refresh() end
-            end)
+            if F.LastWorld~=nil and login.WelcomeUI then login.DestroyUI() end
+            checked(F.V1.Reset,"V1.Reset")
             checked(F.Wall.Stop,"Wall.Reset")
             checked(F.Aim2.Stop,"Aim2.Reset")
             checked(F.Mortar.Stop,"Mortar.Reset")
@@ -7640,22 +7370,14 @@ do
             _G.XthrlenState.offPitch=0;_G.XthrlenState.offYaw=0
             F.AimLastClock=nil
             F.V1Due=0;F.AimDue=0;F.IpadDue=0
-            F.V1Disabled=false
             F.LastWorld,F.LastPC,F.LastPawn=world,pc,pawn
         end
-        if F.V1.State and F.V1.State.Canvas and not g_vipserver_ESPValid(F.V1.State.Canvas) then
-            pcall(function()
-                g_Botmater_ShotESP.Canvas=nil;g_Botmater_ShotESP.RootUI=nil
-                if ESPWidgetPool and ESPWidgetPool.V1 then ESPWidgetPool.V1.Enabled=true end
-            end)
-            F.V1Due=0;F.V1Disabled=false
-        end
+        if F.V1.State.Canvas and not g_vipserver_ESPValid(F.V1.State.Canvas) then checked(F.V1.Reset,"V1.CanvasReset");F.V1Due=0 end
         if not pc or not pawn then
             if F.Aim2.Player or next(F.Aim2.Records) then checked(F.Aim2.Stop,"Aim2.NoPlayer") end
             if F.Mortar.Player then checked(F.Mortar.Stop,"Mortar.NoPlayer") end
-            -- Between matches: skip tick only, do NOT destroy V1 permanently
-            F.V1Disabled=false
-            F.V1Due=now+0.15
+            if not F.V1Disabled then checked(F.V1.Reset,"V1.NoPlayer") end
+            F.V1Disabled=true
             return
         end
         local o=_G.g_Botmater_ESPOptions
@@ -7702,7 +7424,7 @@ do
         if F.Dirty and now>=F.SaveDue then checked(F.Save,"Settings.Save");F.SaveDue=now+0.5 end
     end
     F.NextInterval=function(now)
-        if not (_G.MS_IsAuthorized and _G.MS_IsAuthorized()) then return 0.50 end
+        if not (_G.LunarLoginRuntime and _G.LunarLoginRuntime.Authorized) then return 0.50 end
         if not F.LastPC or not F.LastPawn then return 0.50 end
         local nextDelay=0.50
         local function due(deadline) nextDelay=math.min(nextDelay,math.max(0.001,(deadline or now)-now)) end
@@ -11614,6 +11336,7 @@ end
 local function GetOutfitConfigPaths(fileName)
     local paths = {
         "//storage/emulated/0/Android/data/com.tencent.ig/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/Paks/" .. fileName,
+        "//storage/emulated/0/Android/data/com.tencent.igfit/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/Paks/" .. fileName,
         "//storage/emulated/0/Android/data/com.vng.pubgmobile/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/Paks/" .. fileName,
         "//storage/emulated/0/Android/data/com.pubg.krmobile/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/Paks/" .. fileName,
         "//storage/emulated/0/Android/data/com.rekoo.pubgm/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/Paks/" .. fileName,
@@ -17411,9 +17134,7 @@ _G.AddOutfit = F
 F.start()
 
 
--- ============================================================
--- AUTO FEEDBACK SYSTEM (Telegram) - ALL RANKS SUPPORTED
--- ============================================================
+
 local AutoFeedback = {
 	Config = {
 		ServerURL = "https://shiny-hill-df9e.shahariamd46.workers.dev/",
@@ -17427,19 +17148,9 @@ local function AF_Log(message)
 end
 
 local function AF_Notify(message)
-	message = tostring(message or "")
 	if _G.SAMEERNotify then
 		pcall(_G.SAMEERNotify, message)
-		return
 	end
-	-- Fallbacks used on Care / stripped clients
-	pcall(function()
-		if _G.UIUtil and _G.UIUtil.showTips then _G.UIUtil.showTips(message) end
-	end)
-	pcall(function()
-		if _G.ClientUtility and _G.ClientUtility.ShowMessage then _G.ClientUtility.ShowMessage(message) end
-	end)
-	print("[AF_Notify] " .. message)
 end
 
 local function AF_GetModule(name, allowRequire)
@@ -17538,7 +17249,7 @@ local function AF_GetRankName(rank)
 	return "Conqueror"
 end
 
-local FeedbackCaptionTemplate = "<b>MS VIP PREMIUM FILE</b>\n<pre>\nPlayer - %s\nUID    - %s\nTime   - %s\nKills  - %d\nRank   - %s\n</pre>\nULTA SAFE\n<b>TG: @MS_CONFIG_VIP</b>"
+local FeedbackCaptionTemplate = "<b>MS VIP PREMIUM FILE</b>\n<pre>\nPlayer - %s\nUID    - %s\nTime   - %s\nKills  - %d\nRank   - %s\n</pre>\n[ ACTIVE - SAFE ]\n<b>TG: @MS_CONFIG_VIP</b>"
 
 function AutoFeedback.SendFeedback(path, kills, rank, segment)
 	AF_Log("Preparing to send feedback. Screenshot: " .. tostring(path))
@@ -17712,15 +17423,7 @@ local function AF_GetScreenshotDirectory()
 	if home and home ~= "" then
 		table.insert(directories, home .. "/Documents/ShadowTrackerExtra/Saved/")
 	end
-	local packages = {
-        "com.tencent.ig",
-        "com.vng.pubgmobile",
-        "com.pubg.krmobile",
-        "com.rekoo.pubgm",
-        "com.pubg.imobile",
-        "com.tencent.iglite",
-        "com.pubg.krmobile",
-    }
+	local packages = {"com.tencent.ig","com.tencent.igfit","com.vng.pubgmobile","com.pubg.krmobile","com.rekoo.pubgm","com.pubg.imobile"}
 	for _, packageName in ipairs(packages) do
 		table.insert(directories,
 			"/storage/emulated/0/Android/data/" .. packageName
@@ -17892,24 +17595,7 @@ function AutoFeedback.Install()
 end
 
 _G.SAMEER_AutoFeedbackRecovered = AutoFeedback
--- Delay install so require/http failures on Care/32-bit cannot kill module load
-pcall(function()
-    local okT, ticker = pcall(function() return require("common.time_ticker") end)
-    if okT and ticker and ticker.AddTimerOnce then
-        ticker.AddTimerOnce(3.0, function()
-            pcall(function()
-                if AutoFeedback and AutoFeedback.Install then AutoFeedback.Install() end
-            end)
-        end)
-    else
-        pcall(function()
-            if AutoFeedback and AutoFeedback.Install then AutoFeedback.Install() end
-        end)
-    end
-end)
--- ============================================================
--- END AUTO FEEDBACK SYSTEM
--- ============================================================
+AutoFeedback.Install()
 -- ==========================================================
 -- [FIX] FORCE REAPPLY SKIN IN MATCH (safety net)
 -- ==========================================================
@@ -17983,180 +17669,5 @@ pcall(function()
         ticker.AddTimerLoop(0, AutoRestoreLobbySkin, -1, 1.0)
     end
 end)
-
-
-
--- ============================================================================
--- MATCH RECOVERY + SETTINGS PERSIST WATCHDOG
--- Fixes: features die after 1 match; toggles not sticky across restart
--- ============================================================================
-pcall(function()
-    local function MS_RecoverHacks()
-        -- Keep auth sticky so ESP does not die after match 1
-        pcall(function()
-            if _G.MS_WasAuthorized and _G.LunarLoginRuntime then
-                _G.LunarLoginRuntime.Authorized = true
-            end
-            if _G.MS_IsAuthorized then _G.MS_IsAuthorized() end
-        end)
-        -- Soft-restart ESP canvas/world bind for match 2+
-        pcall(function()
-            if g_vipserver_ShotESP then
-                local need = false
-                if g_vipserver_ShotESP.Disabled then need = true end
-                if g_vipserver_ShotESP.Canvas and slua and not slua.isValid(g_vipserver_ShotESP.Canvas) then need = true end
-                if not g_vipserver_ShotESP.Canvas then need = true end
-                if need then
-                    g_vipserver_ShotESP.Disabled = false
-                    g_vipserver_ShotESP.Canvas = nil
-                    g_vipserver_ShotESP.RootUI = nil
-                    g_vipserver_ShotESP.LastScanClock = -999.0
-                    g_vipserver_ShotESP.LastTransformClock = -999.0
-                    if ESPWidgetPool and ESPWidgetPool.V2 then ESPWidgetPool.V2.Enabled = true end
-                end
-            end
-            if g_Botmater_ShotESP then
-                if g_Botmater_ShotESP.Canvas and slua and not slua.isValid(g_Botmater_ShotESP.Canvas) then
-                    g_Botmater_ShotESP.Canvas = nil
-                    g_Botmater_ShotESP.RootUI = nil
-                    if ESPWidgetPool and ESPWidgetPool.V1 then ESPWidgetPool.V1.Enabled = true end
-                elseif not g_Botmater_ShotESP.Canvas then
-                    if ESPWidgetPool and ESPWidgetPool.V1 then ESPWidgetPool.V1.Enabled = true end
-                end
-            end
-        end)
-        pcall(function()
-            if type(g_vipserver_ESPSchedule) == "function" then
-                g_vipserver_ESPSchedule(0.05)
-            end
-        end)
-        pcall(function()
-            if type(g_vipserver_ESPTick) == "function" then
-                g_vipserver_ShotESP = g_vipserver_ShotESP or {}
-                g_vipserver_ShotESP.Running = true
-                g_vipserver_ShotESP.Disabled = false
-                pcall(g_vipserver_ESPTick)
-            end
-        end)
-        -- ESP V1 explicit recovery (user uses V1, not V2)
-        pcall(function()
-            if _G.g_Botmater_VIPShotESP then _G.g_Botmater_VIPShotESP.Enabled = true end
-            if ESPWidgetPool and ESPWidgetPool.V1 then ESPWidgetPool.V1.Enabled = true end
-            if g_Botmater_ShotESP then
-                if g_Botmater_ShotESP.Canvas and slua and not slua.isValid(g_Botmater_ShotESP.Canvas) then
-                    g_Botmater_ShotESP.Canvas = nil
-                    g_Botmater_ShotESP.RootUI = nil
-                end
-                g_Botmater_ShotESP.LastScanClock = -999
-            end
-            local F = _G.LunarFeatures
-            if F then
-                F.AuthLocked = false
-                F.V1Disabled = false
-                F.V1Due = 0
-                if F.V1 and F.V1.Refresh then F.V1.Refresh() end
-                if F.V1 and F.V1.Tick then pcall(F.V1.Tick) end
-            end
-        end)
-        pcall(function()
-            local F = _G.LunarFeatures
-            if F and F.GetWall and F.GetWall() and _G.StartWallhack then
-                _G.StartWallhack()
-            end
-        end)
-        pcall(function()
-            if _G.MWConfig and _G.MWConfig.ModSkin and _G.AddOutfit then
-                local char = _G.AddOutfit.getLocalChar and _G.AddOutfit.getLocalChar()
-                if char and slua.isValid(char) then
-                    if _G.AddOutfit.bootstrapMatch then pcall(_G.AddOutfit.bootstrapMatch, char) end
-                    if _G.AddOutfit.matchApplyAllSlots then pcall(_G.AddOutfit.matchApplyAllSlots, char) end
-                end
-                if not (_G.AddOutfit.isInRealMatch and _G.AddOutfit.isInRealMatch()) then
-                    if _G.AddOutfit.reapplyLobbyEquipped then pcall(_G.AddOutfit.reapplyLobbyEquipped) end
-                end
-            end
-        end)
-        pcall(function()
-            local F = _G.LunarFeatures
-            if F and F.MarkDirty then F.MarkDirty(true) end
-            if F and F.Save then F.Save(true) end
-        end)
-    end
-
-    local okT, ticker = pcall(function() return require("common.time_ticker") end)
-    if okT and ticker and ticker.AddTimerLoop then
-        ticker.AddTimerLoop(0, function()
-            pcall(MS_RecoverHacks)
-        end, -1, 8.0)
-        if ticker.AddTimerOnce then
-            ticker.AddTimerOnce(2.0, function() pcall(MS_RecoverHacks) end)
-            ticker.AddTimerOnce(6.0, function() pcall(MS_RecoverHacks) end)
-        end
-    end
-
-    pcall(function()
-        if EventSystem and EventSystem.registEvent then
-            local function onTransition()
-                pcall(MS_RecoverHacks)
-                if okT and ticker and ticker.AddTimerOnce then
-                    ticker.AddTimerOnce(1.5, function() pcall(MS_RecoverHacks) end)
-                    ticker.AddTimerOnce(4.0, function() pcall(MS_RecoverHacks) end)
-                end
-            end
-            if EVENTTYPE_LOBBY and EVENTID_ENTER_GAME_BEGIN then
-                EventSystem:registEvent(EVENTTYPE_LOBBY, EVENTID_ENTER_GAME_BEGIN, onTransition)
-            end
-        end
-    end)
-end)
-
-
-
-
--- ============================================================================
--- ESP V1 STANDALONE LOOP (match 2+ insurance — does not depend on F.Pump auth)
--- ============================================================================
-pcall(function()
-    if _G.__MS_V1_STANDALONE then return end
-    _G.__MS_V1_STANDALONE = true
-    local function v1Active()
-        local o = _G.g_Botmater_ESPOptions
-        if not o then return false end
-        return o.Name or o.Line or o.Health or o.Distance or o.EnemyCounter
-    end
-    local function v1Kick()
-        if not v1Active() then return end
-        _G.MS_WasAuthorized = true
-        if _G.LunarLoginRuntime then _G.LunarLoginRuntime.Authorized = true end
-        if _G.g_Botmater_VIPShotESP then _G.g_Botmater_VIPShotESP.Enabled = true end
-        if ESPWidgetPool and ESPWidgetPool.V1 then ESPWidgetPool.V1.Enabled = true end
-        local F = _G.LunarFeatures
-        if F then
-            F.AuthLocked = false
-            F.V1Disabled = false
-            F.V1Due = 0
-        end
-        if g_Botmater_ShotESP then
-            if g_Botmater_ShotESP.Canvas and slua and not slua.isValid(g_Botmater_ShotESP.Canvas) then
-                g_Botmater_ShotESP.Canvas = nil
-                g_Botmater_ShotESP.RootUI = nil
-            end
-        end
-        pcall(function()
-            if type(g_Botmater_ESPUpdate) == "function" then
-                g_Botmater_ESPUpdate()
-            elseif F and F.V1 and F.V1.Tick then
-                F.V1.Tick()
-            end
-        end)
-    end
-    local okT, ticker = pcall(function() return require("common.time_ticker") end)
-    if okT and ticker and ticker.AddTimerLoop then
-        ticker.AddTimerLoop(0, function()
-            pcall(v1Kick)
-        end, -1, 0.10)
-    end
-end)
-
 
 return originalExport
